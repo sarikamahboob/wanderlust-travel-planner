@@ -4,19 +4,6 @@ import { Map, Share2 } from 'lucide-react';
 import Link from 'next/link';
 
 const PlanNavbar = ({ slug, title }) => {
-  const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: title || 'Travel Plan',
-        text: `Check out this amazing travel plan: ${title}`,
-        url: window.location.href,
-      });
-    } else {
-      const url = window.location.href;
-      navigator.clipboard.writeText(url);
-      alert('Link copied to clipboard!');
-    }
-  };
 
   const handleFacebookShare = () => {
     const url = encodeURIComponent(window.location.href);
