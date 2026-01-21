@@ -1,6 +1,7 @@
 import { connectDB } from '@/lib/mongodb';
 import { generateUniqueSlug } from '@/lib/slug';
 import TravelPlan from '@/models/TravelPlan';
+import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
@@ -74,22 +75,41 @@ export async function POST(request) {
     }
 
     let destination = '';
+    
+    let cleanedPrompt = normalizedPrompt
+      .replace(/\b(make|create|plan|travel|trip|visit|tour|vacation|journey|explore|adventure|holiday|itinerary|for|to|in|a|an|the)\b/gi, ' ')
+      .replace(/\b\d+\s*(?:day|days)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
     const destinationPatterns = [
-      /(?:to|in|visit|explore|travel to)\s+([a-z\s]+?)(?:\s+(?:for|in|with|,|$))/i,
+      /(?:^|\s)([a-z]+(?:\s+[a-z]+)*?)(?:\s+\d+\s*day)/i,
+      /(?:\d+\s*day\s+)([a-z]+(?:\s+[a-z]+)*?)(?:\s|$)/i,
+      /(?:for|to|in)\s+([a-z]+(?:\s+[a-z]+)*?)(?:\s+\d+\s*day|\s*travel|\s*plan|$)/i,
       /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/,
     ];
 
     for (const pattern of destinationPatterns) {
       const match = prompt.match(pattern);
-      if (match && match[1]) {
+      if (match && match[1]) {    
         destination = match[1].trim();
         break;
       }
     }
 
-    if (!destination) {
-      destination = prompt
-        .split(/\s+(?:for|in|days|day|trip|tour)/i)[0]
+    if (!destination || destination.length < 2) {
+      const words = cleanedPrompt.split(/\s+/).filter(word => 
+        word.length > 2 && 
+        !['plan', 'travel', 'trip', 'tour', 'make', 'create'].includes(word.toLowerCase())
+      );
+      destination = words.slice(0, 3).join(' ').trim(); 
+    }
+
+    if (!destination || destination.length < 2) {
+      const beforeDuration = prompt.split(/\d+\s*(?:day|days)/i)[0];
+      destination = beforeDuration
+        .replace(/\b(make|create|plan|travel|trip|visit|tour|for|to|in|a|an|the)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
     }
 
@@ -100,10 +120,31 @@ export async function POST(request) {
       );
     }
 
-    const existingPlan = await TravelPlan.findOne({
-      destination: { $regex: new RegExp(destination, 'i') },
+    const normalizedDestinationForSearch = destination.toLowerCase().trim().replace(/\s+/g, ' ');
+    
+    const normalizedDestinationForStorage = normalizedDestinationForSearch
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+
+    const escapedDestination = normalizedDestinationForSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    
+    let existingPlan = await TravelPlan.findOne({
+      $or: [
+        { destination: { $regex: new RegExp(`^${escapedDestination}$`, 'i') } },
+        { destination: { $regex: new RegExp(`^${normalizedDestinationForStorage}$`, 'i') } },
+        { destination: { $regex: new RegExp(`\\b${escapedDestination}\\b`, 'i') } },
+      ],
       duration: duration,
     });
+
+    if (!existingPlan && normalizedDestinationForSearch.split(' ').length > 0) {
+      const firstWord = normalizedDestinationForSearch.split(' ')[0];
+      existingPlan = await TravelPlan.findOne({
+        destination: { $regex: new RegExp(`^${firstWord}\\b`, 'i') },
+        duration: duration,
+      });
+    }
 
     if (existingPlan) {
       return NextResponse.json(
@@ -118,7 +159,7 @@ export async function POST(request) {
     const { generateTravelPlan } = await import('@/lib/gemini');
     const { fetchDestinationImage, fetchDayImage } = await import('@/lib/images');
 
-    const travelPlanData = await generateTravelPlan(prompt, destination, duration);
+    const travelPlanData = await generateTravelPlan(prompt, normalizedDestinationForStorage, duration);
 
     if (!travelPlanData) {
       return NextResponse.json(
@@ -127,7 +168,6 @@ export async function POST(request) {
       );
     }
 
-    // Validate travelPlanData structure
     if (!travelPlanData || typeof travelPlanData !== 'object') {
       console.error('Invalid travelPlanData:', travelPlanData);
       return NextResponse.json(
@@ -150,7 +190,7 @@ export async function POST(request) {
       );
     }
 
-    const imageUrl = await fetchDestinationImage(destination);
+    const imageUrl = await fetchDestinationImage(normalizedDestinationForStorage);
 
     const itineraryWithImages = await Promise.all(
       travelPlanData.itinerary.map(async (day) => {
@@ -160,7 +200,7 @@ export async function POST(request) {
 
         const firstActivity = day.activities?.[0]?.title || '';
         const dayImageUrl = await fetchDayImage(
-          destination,
+          normalizedDestinationForStorage,
           day.dayNumber,
           firstActivity
         );
@@ -172,11 +212,11 @@ export async function POST(request) {
       })
     );
 
-    const slug = await generateUniqueSlug(destination, duration, TravelPlan);
+    const slug = await generateUniqueSlug(normalizedDestinationForStorage, duration, TravelPlan);
 
     const newPlan = new TravelPlan({
       slug,
-      destination,
+      destination: normalizedDestinationForStorage,
       duration,
       title: travelPlanData.title,
       description: travelPlanData.description,
@@ -187,6 +227,8 @@ export async function POST(request) {
     });
 
     await newPlan.save();
+
+    revalidatePath('/');
 
     return NextResponse.json(
       {

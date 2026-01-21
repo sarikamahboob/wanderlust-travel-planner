@@ -1,25 +1,9 @@
+'use client';
+
 import { Clock } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-
-async function getLatestPlans() {
-  try {
-    const { connectDB } = await import('@/lib/mongodb');
-    const TravelPlan = (await import('@/models/TravelPlan')).default;
-
-    await connectDB();
-    const plans = await TravelPlan.find()
-      .sort({ createdAt: -1 })
-      .limit(3)
-      .select('slug destination duration title description imageUrl')
-      .lean();
-
-    return plans || [];
-  } catch (error) {
-    console.error('Error fetching latest plans:', error);
-    return [];
-  }
-}
+import { useEffect, useState } from 'react';
 
 const hoverColorClasses = [
   'group-hover:text-emerald-200',
@@ -27,8 +11,44 @@ const hoverColorClasses = [
   'group-hover:text-blue-200',
 ];
 
-const Feature = async () => {
-  const plans = await getLatestPlans();
+const Feature = () => {
+  const [plans, setPlans] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchLatestPlans = async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch('/api/plans/latest?limit=3', {
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          console.error('Failed to fetch latest plans:', response.statusText);
+          setPlans([]);
+          return;
+        }
+
+        const data = await response.json();
+        setPlans(data.plans || []);
+      } catch (error) {
+        console.error('Error fetching latest plans:', error);
+        setPlans([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchLatestPlans();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="w-full text-center py-12">
+        <p className="text-slate-500 text-lg">Loading latest plans...</p>
+      </div>
+    );
+  }
 
   if (plans.length === 0) {
     return (

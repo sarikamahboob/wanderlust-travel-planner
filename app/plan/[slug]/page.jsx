@@ -2,13 +2,12 @@ import DestinationHighlights from '@/components/Plan/DestinationHighlights';
 import Itinerary from '@/components/Plan/Itinerary';
 import PlanHeroSection from '@/components/Plan/PlanHeroSection';
 import PlanNavbar from '@/components/Plan/PlanNavbar';
+import { connectDB } from '@/lib/mongodb';
+import TravelPlan from '@/models/TravelPlan';
 import { notFound } from 'next/navigation';
 
 async function getPlanData(slug) {
   try {
-    const { connectDB } = await import('@/lib/mongodb');
-    const TravelPlan = (await import('@/models/TravelPlan')).default;
-    
     await connectDB();
     const plan = await TravelPlan.findOne({ slug }).lean();
 
