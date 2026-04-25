@@ -114,7 +114,7 @@ const PlanFooter = () => {
         </div>
       </div>
       <div className="max-w-7xl mx-auto mt-16 pt-8 border-t border-slate-100 flex justify-between text-slate-400 text-sm">
-        <p>© 2024 Wanderlust Inc. All rights reserved.</p>
+        <p>© 2026 Wanderlust Inc. All rights reserved.</p>
       </div>
     </footer>
   );

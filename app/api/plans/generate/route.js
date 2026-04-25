@@ -20,9 +20,13 @@ export async function POST(request) {
     } catch (dbError) {
       console.error('Database connection error:', dbError);
       return NextResponse.json(
-        { 
-          error: 'Database connection failed. Please check your MongoDB connection string.',
-          details: process.env.NODE_ENV === 'development' ? dbError.message : undefined
+        {
+          error:
+            'Database connection failed. Please check your MongoDB connection string.',
+          details:
+            process.env.NODE_ENV === 'development'
+              ? dbError.message
+              : undefined,
         },
         { status: 500 }
       );
@@ -47,7 +51,7 @@ export async function POST(request) {
       'day',
     ];
 
-    const isTravelRelated = travelKeywords.some((keyword) =>
+    const isTravelRelated = travelKeywords.some(keyword =>
       normalizedPrompt.includes(keyword)
     );
 
@@ -75,9 +79,12 @@ export async function POST(request) {
     }
 
     let destination = '';
-    
+
     let cleanedPrompt = normalizedPrompt
-      .replace(/\b(make|create|plan|travel|trip|visit|tour|vacation|journey|explore|adventure|holiday|itinerary|for|to|in|a|an|the)\b/gi, ' ')
+      .replace(
+        /\b(make|create|plan|travel|trip|visit|tour|vacation|journey|explore|adventure|holiday|itinerary|for|to|in|a|an|the)\b/gi,
+        ' '
+      )
       .replace(/\b\d+\s*(?:day|days)\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -91,49 +98,74 @@ export async function POST(request) {
 
     for (const pattern of destinationPatterns) {
       const match = prompt.match(pattern);
-      if (match && match[1]) {    
+      if (match && match[1]) {
         destination = match[1].trim();
         break;
       }
     }
 
     if (!destination || destination.length < 2) {
-      const words = cleanedPrompt.split(/\s+/).filter(word => 
-        word.length > 2 && 
-        !['plan', 'travel', 'trip', 'tour', 'make', 'create'].includes(word.toLowerCase())
-      );
-      destination = words.slice(0, 3).join(' ').trim(); 
+      const words = cleanedPrompt
+        .split(/\s+/)
+        .filter(
+          word =>
+            word.length > 2 &&
+            !['plan', 'travel', 'trip', 'tour', 'make', 'create'].includes(
+              word.toLowerCase()
+            )
+        );
+      destination = words.slice(0, 3).join(' ').trim();
     }
 
     if (!destination || destination.length < 2) {
       const beforeDuration = prompt.split(/\d+\s*(?:day|days)/i)[0];
       destination = beforeDuration
-        .replace(/\b(make|create|plan|travel|trip|visit|tour|for|to|in|a|an|the)\b/gi, ' ')
+        .replace(
+          /\b(make|create|plan|travel|trip|visit|tour|for|to|in|a|an|the)\b/gi,
+          ' '
+        )
         .replace(/\s+/g, ' ')
         .trim();
     }
 
     if (!destination || destination.length < 2) {
       return NextResponse.json(
-        { error: 'Could not extract destination from prompt. Please specify a destination.' },
+        {
+          error:
+            'Could not extract destination from prompt. Please specify a destination.',
+        },
         { status: 400 }
       );
     }
 
-    const normalizedDestinationForSearch = destination.toLowerCase().trim().replace(/\s+/g, ' ');
-    
+    const normalizedDestinationForSearch = destination
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ');
+
     const normalizedDestinationForStorage = normalizedDestinationForSearch
       .split(' ')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
 
-    const escapedDestination = normalizedDestinationForSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    
+    const escapedDestination = normalizedDestinationForSearch.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      '\\$&'
+    );
+
     let existingPlan = await TravelPlan.findOne({
       $or: [
         { destination: { $regex: new RegExp(`^${escapedDestination}$`, 'i') } },
-        { destination: { $regex: new RegExp(`^${normalizedDestinationForStorage}$`, 'i') } },
-        { destination: { $regex: new RegExp(`\\b${escapedDestination}\\b`, 'i') } },
+        {
+          destination: {
+            $regex: new RegExp(`^${normalizedDestinationForStorage}$`, 'i'),
+          },
+        },
+        {
+          destination: {
+            $regex: new RegExp(`\\b${escapedDestination}\\b`, 'i'),
+          },
+        },
       ],
       duration: duration,
     });
@@ -157,9 +189,14 @@ export async function POST(request) {
     }
 
     const { generateTravelPlan } = await import('@/lib/gemini');
-    const { fetchDestinationImage, fetchDayImage } = await import('@/lib/images');
+    const { fetchDestinationImage, fetchDayImage } =
+      await import('@/lib/images');
 
-    const travelPlanData = await generateTravelPlan(prompt, normalizedDestinationForStorage, duration);
+    const travelPlanData = await generateTravelPlan(
+      prompt,
+      normalizedDestinationForStorage,
+      duration
+    );
 
     if (!travelPlanData) {
       return NextResponse.json(
@@ -171,29 +208,34 @@ export async function POST(request) {
     if (!travelPlanData || typeof travelPlanData !== 'object') {
       console.error('Invalid travelPlanData:', travelPlanData);
       return NextResponse.json(
-        { 
+        {
           error: 'Invalid travel plan data structure received',
-          details: 'Travel plan data is missing or invalid'
+          details: 'Travel plan data is missing or invalid',
         },
         { status: 500 }
       );
     }
 
     if (!travelPlanData.itinerary || !Array.isArray(travelPlanData.itinerary)) {
-      console.error('Invalid travelPlanData structure:', JSON.stringify(travelPlanData, null, 2));
+      console.error(
+        'Invalid travelPlanData structure:',
+        JSON.stringify(travelPlanData, null, 2)
+      );
       return NextResponse.json(
-        { 
+        {
           error: 'Invalid travel plan data structure received',
-          details: 'Itinerary is missing or not an array'
+          details: 'Itinerary is missing or not an array',
         },
         { status: 500 }
       );
     }
 
-    const imageUrl = await fetchDestinationImage(normalizedDestinationForStorage);
+    const imageUrl = await fetchDestinationImage(
+      normalizedDestinationForStorage
+    );
 
     const itineraryWithImages = await Promise.all(
-      travelPlanData.itinerary.map(async (day) => {
+      travelPlanData.itinerary.map(async day => {
         if (day.imageUrl) {
           return day;
         }
@@ -212,7 +254,11 @@ export async function POST(request) {
       })
     );
 
-    const slug = await generateUniqueSlug(normalizedDestinationForStorage, duration, TravelPlan);
+    const slug = await generateUniqueSlug(
+      normalizedDestinationForStorage,
+      duration,
+      TravelPlan
+    );
 
     const newPlan = new TravelPlan({
       slug,
@@ -242,10 +288,19 @@ export async function POST(request) {
     return NextResponse.json(
       {
         error: 'An error occurred while generating the travel plan',
-        details: error.details ? JSON.stringify(error.details, null, 2) : error.message,
+        details: JSON.stringify(
+          {
+            message: error.message,
+            cause: error.cause ? error.cause.message : undefined,
+            response: error.response
+              ? JSON.stringify(error.response)
+              : undefined,
+          },
+          null,
+          2
+        ),
       },
       { status: 500 }
     );
   }
 }
-
